@@ -1,4 +1,4 @@
-# Interactive ESP32 Robot with ChatGPT
+# Personal Interactive ESP32 Robot Assistant
 
 This is an interactive robot assistant, not a mobile robot. A user asks questions; the robot uses ChatGPT to answer, shows cute expressions, and reacts to touch by shaking/moving.
 
