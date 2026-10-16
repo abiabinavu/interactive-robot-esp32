@@ -1,149 +1,68 @@
 /*
- * ESP32 Interactive Robot — reference implementation
- *
- * Assumed hardware: classic ESP32 DevKit, TB6612FNG dual motor driver,
- * two brushed DC motors, HC-SR04 ultrasonic sensor, and a start/stop button.
- * These parts and pin assignments are a generated reference build. Confirm
- * they match your physical robot before connecting power.
+ * Interactive ESP32 robot: local touch-response reference scaffold.
+ * Demonstrates friendly OLED face and servo shake. Voice capture, speech
+ * recognition, ChatGPT, and spoken answers require the separate secure
+ * backend/audio integration described in README.md.
+ * Assumed hardware; generated example, not hardware-verified.
  */
-
 #include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <ESP32Servo.h>
 
-constexpr uint8_t PIN_AIN1 = 26;
-constexpr uint8_t PIN_AIN2 = 27;
-constexpr uint8_t PIN_PWMA = 25;
-constexpr uint8_t PIN_BIN1 = 33;
-constexpr uint8_t PIN_BIN2 = 32;
-constexpr uint8_t PIN_PWMB = 14;
-constexpr uint8_t PIN_STBY = 13;
+constexpr uint8_t TOUCH_PIN=27, SERVO_PIN=18, OLED_SDA=21, OLED_SCL=22;
+constexpr uint8_t OLED_ADDR=0x3C;
+Adafruit_SSD1306 display(128,64,&Wire,-1);
+Servo reactionServo;
+bool wasTouched=false;
 
-constexpr uint8_t PIN_TRIG = 18;
-constexpr uint8_t PIN_ECHO = 19;  // HC-SR04 ECHO must pass through a divider.
-constexpr uint8_t PIN_START_BUTTON = 23; // Button from GPIO23 to GND.
-
-constexpr uint32_t ECHO_TIMEOUT_US = 25000UL;
-constexpr int OBSTACLE_DISTANCE_CM = 25;
-constexpr uint32_t DEBOUNCE_MS = 35;
-
-bool robotEnabled = false;
-bool lastButtonReading = HIGH;
-bool stableButtonState = HIGH;
-uint32_t lastDebounceMs = 0;
-
-void setWheel(uint8_t in1, uint8_t in2, uint8_t pwm, int direction) {
-  if (direction > 0) {
-    digitalWrite(in1, HIGH);
-    digitalWrite(in2, LOW);
-    digitalWrite(pwm, HIGH); // Full speed reference build; no PWM speed control.
-  } else if (direction < 0) {
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, HIGH);
-    digitalWrite(pwm, HIGH);
-  } else {
-    digitalWrite(pwm, LOW);
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, LOW);
+void face(const char *caption) {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.drawCircle(64,28,22,SSD1306_WHITE);
+  display.fillCircle(56,23,2,SSD1306_WHITE);
+  display.fillCircle(72,23,2,SSD1306_WHITE);
+  display.drawLine(54,36,59,40,SSD1306_WHITE);
+  display.drawLine(59,40,64,42,SSD1306_WHITE);
+  display.drawLine(64,42,69,40,SSD1306_WHITE);
+  display.drawLine(69,40,74,36,SSD1306_WHITE);
+  display.setTextSize(1);
+  display.setCursor(0,56);
+  display.print(caption);
+  display.display();
+}
+void shake() {
+  for (uint8_t i=0;i<3;i++) {
+    reactionServo.write(72); delay(120);
+    reactionServo.write(108); delay(120);
   }
+  reactionServo.write(90);
 }
-
-void drive(int leftDirection, int rightDirection) {
-  setWheel(PIN_AIN1, PIN_AIN2, PIN_PWMA, leftDirection);
-  setWheel(PIN_BIN1, PIN_BIN2, PIN_PWMB, rightDirection);
-}
-
-void stopMotors() {
-  drive(0, 0);
-}
-
-long readDistanceCm() {
-  digitalWrite(PIN_TRIG, LOW);
-  delayMicroseconds(3);
-  digitalWrite(PIN_TRIG, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(PIN_TRIG, LOW);
-
-  const unsigned long echoUs = pulseIn(PIN_ECHO, HIGH, ECHO_TIMEOUT_US);
-  if (echoUs == 0) {
-    return -1; // No echo: stop instead of assuming the path is clear.
-  }
-  return static_cast<long>(echoUs / 58UL);
-}
-
-void pollStartButton() {
-  const bool reading = digitalRead(PIN_START_BUTTON);
-
-  if (reading != lastButtonReading) {
-    lastDebounceMs = millis();
-  }
-
-  if ((millis() - lastDebounceMs) > DEBOUNCE_MS &&
-      reading != stableButtonState) {
-    stableButtonState = reading;
-    if (stableButtonState == LOW) {
-      robotEnabled = !robotEnabled;
-      stopMotors();
-      Serial.println(robotEnabled ? "Robot: RUN" : "Robot: STOP");
-    }
-  }
-
-  lastButtonReading = reading;
-}
-
-void avoidObstacle() {
-  drive(-1, -1);
-  delay(250);
-  stopMotors();
-  delay(100);
-
-  // Pivot right. Swap signs if the motor wiring makes the robot turn left.
-  drive(1, -1);
-  delay(350);
-  stopMotors();
-  delay(100);
-}
-
 void setup() {
   Serial.begin(115200);
-
-  pinMode(PIN_AIN1, OUTPUT);
-  pinMode(PIN_AIN2, OUTPUT);
-  pinMode(PIN_PWMA, OUTPUT);
-  pinMode(PIN_BIN1, OUTPUT);
-  pinMode(PIN_BIN2, OUTPUT);
-  pinMode(PIN_PWMB, OUTPUT);
-  pinMode(PIN_STBY, OUTPUT);
-
-  pinMode(PIN_TRIG, OUTPUT);
-  pinMode(PIN_ECHO, INPUT);
-  pinMode(PIN_START_BUTTON, INPUT_PULLUP);
-
-  digitalWrite(PIN_STBY, HIGH);
-  digitalWrite(PIN_TRIG, LOW);
-  stopMotors();
-
-  Serial.println("ESP32 Interactive Robot reference firmware");
-  Serial.println("Press the button to start or stop.");
+  pinMode(TOUCH_PIN,INPUT);
+  Wire.begin(OLED_SDA,OLED_SCL);
+  if (display.begin(SSD1306_SWITCHCAPVCC,OLED_ADDR)) face("Hello! Ask me a question.");
+  else Serial.println("Check OLED wiring/address.");
+  reactionServo.setPeriodHertz(50);
+  reactionServo.attach(SERVO_PIN,500,2400);
+  reactionServo.write(90);
 }
-
 void loop() {
-  pollStartButton();
-
-  if (!robotEnabled) {
-    stopMotors();
-    delay(10);
-    return;
+  bool touched=digitalRead(TOUCH_PIN)==HIGH;
+  if (touched && !wasTouched) {
+    face("<3 Happy!");
+    shake();
   }
-
-  const long distanceCm = readDistanceCm();
-  if (distanceCm < 0) {
-    stopMotors();
-    Serial.println("No ultrasonic echo; motors stopped.");
-  } else if (distanceCm <= OBSTACLE_DISTANCE_CM) {
-    Serial.printf("Obstacle at %ld cm; avoiding.\n", distanceCm);
-    avoidObstacle();
-  } else {
-    drive(1, 1);
-  }
-
-  delay(60); // Leave time between HC-SR04 measurements.
+  wasTouched=touched;
+  delay(20);
 }
+/*
+ * Voice/ChatGPT integration outline (not implemented here):
+ * 1. Capture question audio from an I2S microphone.
+ * 2. Send over TLS to a trusted backend.
+ * 3. Backend performs speech-to-text, ChatGPT, and text-to-speech.
+ * 4. Stream answer audio to an I2S amplifier/speaker.
+ * Never commit API keys or Wi-Fi credentials to this public repository.
+ */
