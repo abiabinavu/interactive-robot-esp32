@@ -57,7 +57,7 @@
   <text x="78" y="540" class="label">HC-SR04 ultrasonic module</text>
   <text x="78" y="570" class="small">VCC: 5V · GND: common · TRIG: GPIO18</text>
   <text x="78" y="600" class="small">ECHO → 2kΩ series → node → GPIO19</text>
-  <text x="78" y="622" class="tiny">2kΩ from node to GND keeps ECHO near 3.3V.</text>
+  <text x="78" y="622" class="tiny">3.3kΩ from node to GND scales a 5V ECHO to about 3.1V.</text>
   <path d="M220 455 V480 H220 V505" class="sensor"/>
 
   <rect x="435" y="505" width="260" height="125" class="box"/>
